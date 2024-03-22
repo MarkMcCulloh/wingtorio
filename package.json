@@ -1,0 +1,15 @@
+{
+  "name": "wingtorio",
+  "version": "0.0.0",
+  "description": "Factorio Cloud",
+  "author": "Wingding",
+  "license": "MIT",
+  "scripts": {
+    "tf-deploy": "wing compile -t tf-aws && cd target/main.tfaws && terraform init && terraform apply --auto-approve",
+    "tf-destroy": "wing compile -t tf-aws && cd target/main.tfaws && terraform init && terraform destroy --auto-approve"
+  },
+  "wing": true,
+  "dependencies": {
+    "@cdktf/provider-aws": "^19.11.0"
+  }
+}
