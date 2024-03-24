@@ -5,11 +5,17 @@
   "author": "Wingding",
   "license": "MIT",
   "scripts": {
-    "tf-deploy": "wing compile -t tf-aws && cd target/main.tfaws && terraform init && terraform apply --auto-approve",
-    "tf-destroy": "wing compile -t tf-aws && cd target/main.tfaws && terraform init && terraform destroy --auto-approve"
+    "compile": "wing compile -t tf-aws main.w",
+    "up": "bun compile && cd target/main.tfaws && terraform init && terraform apply --auto-approve",
+    "down": "bun compile && cd target/main.tfaws && terraform init && terraform destroy --auto-approve"
   },
   "wing": true,
   "dependencies": {
-    "@cdktf/provider-aws": "^19.11.0"
+    "@cdktf/provider-aws": "^19.11.0",
+    "@cdktf/provider-null": "^10.0.0",
+    "cdktf": "^0.20.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.0.10"
   }
 }

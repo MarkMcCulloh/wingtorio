@@ -1,0 +1,29 @@
+{
+  "mods":
+  [
+    {
+      "name": "base",
+      "enabled": true
+    },
+
+    {
+      "name": "flib",
+      "enabled": true
+    },
+
+    {
+      "name": "Krastorio2",
+      "enabled": true
+    },
+
+    {
+      "name": "Krastorio2Assets",
+      "enabled": true
+    },
+
+    {
+      "name": "Squeak Through",
+      "enabled": true
+    }
+  ]
+}
