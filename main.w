@@ -4,6 +4,10 @@ bring "cdktf" as cdktf;
 bring "./helper" as helper;
 bring cloud;
 
+let TCP_PORT = 27015;
+let UDP_PORT = 34197;
+
+let ALL_IPS = "0.0.0.0/0";
 let baseCidrBlock = "10.0.1.0/24";
 let logs = new aws.cloudwatchLogGroup.CloudwatchLogGroup(name: "factorio");
 
@@ -20,9 +24,7 @@ let publicSubnet = new aws.subnet.Subnet(
   mapPublicIpOnLaunch: true,
 );
 
-let ig = new aws.internetGateway.InternetGateway(
-  vpcId: vpc.id
-);
+let ig = new aws.internetGateway.InternetGateway(vpcId: vpc.id);
 
 let eip = new aws.eip.Eip(
   domain: "vpc",
@@ -34,7 +36,7 @@ let publicRouteTable = new aws.routeTable.RouteTable(
   vpcId: vpc.id,
   route: [
     {
-      cidrBlock: "0.0.0.0/0",
+      cidrBlock: ALL_IPS,
       gatewayId: ig.id,
     },
   ],
@@ -52,21 +54,21 @@ let sg = new aws.securityGroup.SecurityGroup(
       fromPort: 0,
       toPort: 0,
       protocol: "-1",
-      cidrBlocks: ["0.0.0.0/0"]
+      cidrBlocks: [ALL_IPS]
     },
   ],
   ingress: [
     {
-      fromPort: 27015,
-      toPort: 27015,
+      fromPort: TCP_PORT,
+      toPort: TCP_PORT,
       protocol: "tcp",
-      cidrBlocks: ["0.0.0.0/0"]
+      cidrBlocks: [ALL_IPS]
     },
     {
-      fromPort: 34197,
-      toPort: 34197,
+      fromPort: UDP_PORT,
+      toPort: UDP_PORT,
       protocol: "udp",
-      cidrBlocks: ["0.0.0.0/0"]
+      cidrBlocks: [ALL_IPS]
     },
     // EFS
     // TODO This can be refined to the specific ECS service
@@ -74,51 +76,112 @@ let sg = new aws.securityGroup.SecurityGroup(
       fromPort: 2049,
       toPort: 2049,
       protocol: "tcp",
-      cidrBlocks: ["10.0.1.0/24"]
+      cidrBlocks: [baseCidrBlock]
+    },
+    // Allow Nodes to pull images from ECR via VPC endpoints
+    {
+      fromPort: 443,
+      toPort: 443,
+      protocol: "tcp",
+      cidrBlocks: [baseCidrBlock]
     },
   ]
 );
 
+// vpc endpoint for ECR dkr
+let ecrDkrEndpoint = new aws.vpcEndpoint.VpcEndpoint(
+  vpcId: vpc.id,
+  serviceName: "com.amazonaws.us-east-2.ecr.dkr",
+  vpcEndpointType: "Interface",
+  privateDnsEnabled: true,
+  securityGroupIds: [sg.id],
+  subnetIds: [publicSubnet.id],
+) as "ECRDkrEndpoint";
+// vpc endpoint for ECR api
+let ecrApiEndpoint = new aws.vpcEndpoint.VpcEndpoint(
+  vpcId: vpc.id,
+  serviceName: "com.amazonaws.us-east-2.ecr.api",
+  vpcEndpointType: "Interface",
+  privateDnsEnabled: true,
+  securityGroupIds: [sg.id],
+  subnetIds: [publicSubnet.id],
+) as "ECRApiEndpoint";
+// vpc endpoint for CloudWatch
+let cloudWatchEndpoint = new aws.vpcEndpoint.VpcEndpoint(
+  vpcId: vpc.id,
+  serviceName: "com.amazonaws.us-east-2.logs",
+  vpcEndpointType: "Interface",
+  privateDnsEnabled: true,
+  securityGroupIds: [sg.id],
+  subnetIds: [publicSubnet.id],
+) as "CloudWatchEndpoint";
+// vpc endpoint for ECS agent
+let ecsAgentEndpoint = new aws.vpcEndpoint.VpcEndpoint(
+  vpcId: vpc.id,
+  serviceName: "com.amazonaws.us-east-2.ecs-agent",
+  vpcEndpointType: "Interface",
+  privateDnsEnabled: true,
+  securityGroupIds: [sg.id],
+  subnetIds: [publicSubnet.id],
+) as "ECSAgentEndpoint";
+// vpc endpoint for ECS telemetry
+let ecsTelemetryEndpoint = new aws.vpcEndpoint.VpcEndpoint(
+  vpcId: vpc.id,
+  serviceName: "com.amazonaws.us-east-2.ecs-telemetry",
+  vpcEndpointType: "Interface",
+  privateDnsEnabled: true,
+  securityGroupIds: [sg.id],
+  subnetIds: [publicSubnet.id],
+) as "ECSTelemetryEndpoint";
+
+// vpc endpoint for S3
+let s3Endpoint = new aws.vpcEndpoint.VpcEndpoint(
+  vpcId: vpc.id,
+  serviceName: "com.amazonaws.us-east-2.s3",
+  vpcEndpointType: "Gateway",
+  routeTableIds: [publicRouteTable.id],
+) as "S3Endpoint";
+
+// vpc endpoint for EFS
+
 let nlb = new aws.lb.Lb(
   loadBalancerType: "network",
+  securityGroups: [sg.id],
   subnetMapping: {
     subnet_id: publicSubnet.id,
     allocation_id: eip.id,
   },
 );
+let tgHealthCheck = Json {
+  port: "{TCP_PORT}",
+  protocol: "TCP",
+  healthyThreshold: 2,
+  unhealthyThreshold: 2,
+  timeout: 5,
+  interval: 15,
+};
+
 let targetGroupTCP = new aws.lbTargetGroup.LbTargetGroup(
-  port: 27015,
+  port: TCP_PORT,
   protocol: "TCP",
   targetType: "ip",
   vpcId: vpc.id,
   deregistrationDelay: "0",
-  healthCheck: {
-    healthyThreshold: 2,
-    unhealthyThreshold: 2,
-    timeout: 5,
-    interval: 15,
-  },
-) as "TargetGroupTCP";
+  healthCheck: tgHealthCheck,
+) as "TGTCP";
+
 let targetGroupUDP = new aws.lbTargetGroup.LbTargetGroup(
-  port: 34197,
+  port: UDP_PORT,
   protocol: "UDP",
   targetType: "ip",
   vpcId: vpc.id,
   deregistrationDelay: "0",
-  healthCheck: {
-    // Use TCP health check for UDP
-    port: "27015",
-    protocol: "TCP",
-    healthyThreshold: 2,
-    unhealthyThreshold: 2,
-    timeout: 5,
-    interval: 15,
-  },
-) as "TargetGroupUDP";
+  healthCheck: tgHealthCheck,
+) as "TGUDP";
 
 let listenerTCP = new aws.lbListener.LbListener(
   loadBalancerArn: nlb.arn,
-  port: 27015,
+  port: TCP_PORT,
   protocol: "TCP",
   defaultAction: [
     {
@@ -129,7 +192,7 @@ let listenerTCP = new aws.lbListener.LbListener(
 ) as "ListenerTCP";
 let listenerUDP = new aws.lbListener.LbListener(
   loadBalancerArn: nlb.arn,
-  port: 34197,
+  port: UDP_PORT,
   protocol: "UDP",
   defaultAction: [
     {
@@ -143,9 +206,9 @@ let listenerUDP = new aws.lbListener.LbListener(
 
 // Storage
 let efs = new aws.efsFileSystem.EfsFileSystem(
-  // lifecycle: {
-  //   preventDestroy: true,
-  // }
+  lifecycle: {
+    preventDestroy: true,
+  }
 );
 let mountTarget = new aws.efsMountTarget.EfsMountTarget(
   fileSystemId: efs.id,
@@ -177,13 +240,13 @@ let containerConfig = Json [
     image: ecr.image,
     portMappings: [
       {
-        containerPort: 34197,
-        hostPort: 34197,
+        containerPort: UDP_PORT,
+        hostPort: UDP_PORT,
         protocol: "udp"
       },
       {
-        containerPort: 27015,
-        hostPort: 27015,
+        containerPort: TCP_PORT,
+        hostPort: TCP_PORT,
         protocol: "tcp"
       }
     ],
@@ -267,8 +330,8 @@ let taskDefinition = new aws.ecsTaskDefinition.EcsTaskDefinition(
   containerDefinitions: cdktf.Fn.jsonencode(containerConfig),
   requiresCompatibilities: ["FARGATE"],
   networkMode: "awsvpc",
-  cpu: "1024",
-  memory: "2048",
+  cpu: "2048",
+  memory: "4096",
   executionRoleArn: executionRole.arn,
   taskRoleArn: taskRole.arn,
   volume: [
@@ -301,19 +364,27 @@ let service = new aws.ecsService.EcsService(
   networkConfiguration: {
     subnets: [publicSubnet.id],
     securityGroups: [sg.id],
-    // TODO Use a VPC endpoint to access ECR then remove this
-    assignPublicIp: true,
   },
+  dependsOn: Array<cdktf.ITerraformDependable> [
+    listenerTCP, 
+    listenerUDP,
+    s3Endpoint,
+    ecrApiEndpoint,
+    ecrDkrEndpoint,
+    ecsAgentEndpoint,
+    ecsTelemetryEndpoint,
+    cloudWatchEndpoint,
+  ],
   loadBalancer: [
     {
       targetGroupArn: targetGroupTCP.arn,
       containerName: "factorio",
-      containerPort: 27015,
+      containerPort: TCP_PORT,
     },
     {
       targetGroupArn: targetGroupUDP.arn,
       containerName: "factorio",
-      containerPort: 34197,
+      containerPort: UDP_PORT,
     },
   ],
 );

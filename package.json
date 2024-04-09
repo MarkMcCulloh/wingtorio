@@ -7,7 +7,8 @@
   "scripts": {
     "compile": "wing compile -t tf-aws main.w",
     "up": "bun compile && cd target/main.tfaws && terraform init && terraform apply --auto-approve",
-    "down": "bun compile && cd target/main.tfaws && terraform init && terraform destroy --auto-approve"
+    "down": "bun compile && cd target/main.tfaws && terraform init && terraform destroy --auto-approve",
+    "plan": "bun compile && cd target/main.tfaws && terraform init && terraform plan"
   },
   "wing": true,
   "dependencies": {

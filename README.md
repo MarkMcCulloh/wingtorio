@@ -41,6 +41,7 @@ bun down
   - 1 Public Subnet
   - Internet Gateway
   - Public EIP
+  - Several VPC Endpoints to reduce egress data
 - NLB
 - EFS Storage
 - ECR
@@ -50,8 +51,8 @@ bun down
 
 Non-listed resources are negligible (or whoops I forgot).
 
-- ~$0.050/hr (ECS Fargate at 1 vCPU)
+- ~$0.080/hr (ECS Fargate at 1 vCPU)
 - ~$0.005/hr (Public EIP)
 - ~$0.030/hr (NLB)
 
-Total: ~$0.085/hr, ~$2/day
+Total: ~$0.115/hr, ~$2/day
